@@ -1,3 +1,5 @@
+#include <llvm/CodeGen/Passes.h>
+#include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <numeric>
 #include <vector>
 
@@ -81,8 +83,9 @@ private:
     // Make the function type:  int(int)
     auto &Ctx = M.getContext();
     IRBuilder<> builder(Ctx);
+    const auto LLVMint64T = Type::getInt64Ty(Ctx);
     const auto LLVMint32T = Type::getInt32Ty(Ctx);
-    FunctionType *FT = FunctionType::get(LLVMint32T, {LLVMint32T}, false);
+    FunctionType *FT = FunctionType::get(LLVMint32T, {LLVMint64T}, false);
     const llvm::Twine InterpolatorName = GlobalName + "_interpolator";
     Function *F =
         Function::Create(FT, Function::ExternalLinkage, InterpolatorName, M);
@@ -101,8 +104,9 @@ private:
     // ds = {d0, d1, d2, d3, d4, d5}, and perform sum (d0...d5).
     std::vector<llvm::Value *> xs = {ConstantInt::get(LLVMint32T, 1)};
     Argument *x = F->getArg(0); // Only argument of function is the index
+    auto *x32 = builder.CreateTrunc(x, LLVMint32T);
     for (size_t I = 1; I < 6; I++)
-      xs.push_back(builder.CreateMul(xs.back(), x, "x" + std::to_string(I)));
+      xs.push_back(builder.CreateMul(xs.back(), x32, "x" + std::to_string(I)));
     std::vector<llvm::Value *> Ds;
     for (size_t I = 0; I < 6; I++) {
       auto c_i =
@@ -147,11 +151,38 @@ private:
   void replaceArrayAccesses(Module &M) {
     for (auto &f : M.getFunctionList()) {
       for (auto &bb : f.getBasicBlockList()) {
-        errs() << "\nBasic block";
         for (auto &ins : bb) {
           if (ins.getOpcode() == Instruction::GetElementPtr) {
-            auto &gep = dyn_cast<GEPOperator>(ins);
-            errs() << "--Got a gep:\n";
+            // TODO: Assert we only do this analysis
+            // on instructions with exactly 3 operands in GEP
+            auto *array = dyn_cast<GlobalVariable>(ins.getOperand(0));
+            auto *gepIndex1 = dyn_cast<ConstantInt>(ins.getOperand(1));
+            auto *gepIndex2 = ins.getOperand(2);
+            auto &Ctx = M.getContext();
+            const auto LLVMint64T = Type::getInt64Ty(Ctx);
+            const auto LLVMint32T = Type::getInt32Ty(Ctx);
+            FunctionType *FT =
+                FunctionType::get(LLVMint32T, {LLVMint64T}, false);
+            auto *interpolatedValue = CallInst::Create(
+                FT, VarToInterpolator[array->getName()], {gepIndex2}, "", &ins);
+            // Replace all Load uses of this GEP with our newly created
+            // function call result.
+            for (User *U : ins.users()) {
+              errs() << "use ";
+              if (auto *load = dyn_cast<LoadInst>(U)) {
+                for (auto &loadUse : load->uses()) {
+                  loadUse.getUser()->setOperand(loadUse.getOperandNo(),
+                                                interpolatedValue);
+                }
+                load->eraseFromParent();
+              }
+              errs() << '\n';
+            }
+            for (unsigned i = 0; i < ins.getNumOperands(); ++i) {
+              errs() << i << "= ";
+              ins.getOperand(i)->print(errs());
+              errs() << '\n';
+            }
             errs() << '\t';
             ins.print(errs());
             errs() << '\n';
@@ -176,7 +207,11 @@ public:
     // Replace references to the array with accesses into the function
     replaceArrayAccesses(M);
 
-    return false;
+    return true;
+  }
+
+  void getAnalysisUsage(AnalysisUsage &Info) const override {
+    ModulePass::getAnalysisUsage(Info);
   }
 }; // end of struct Interp
 } // end of anonymous namespace
