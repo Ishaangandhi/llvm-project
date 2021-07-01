@@ -30,11 +30,13 @@ private:
       errs() << Global << " of type " << *Global.getType() << ' ';
       PointerType *PTy = cast<PointerType>(Global.getType());
       if (PTy->getElementType()->isArrayTy() &&
-          PTy->getElementType()->getArrayElementType()->isIntegerTy()) {
-        errs() << " is an array." << '\n';
+          PTy->getElementType()->getArrayElementType()->isIntegerTy() &&
+          !Global.getInitializer()->isZeroValue() && /* Not initialized */
+          !Global.hasGlobalUnnamedAddr() /* Probably a string literal */) {
+        errs() << " is a numeric array literal." << '\n';
         GlobalArrays.push_back(&Global);
       } else {
-        errs() << " is NOT array." << '\n';
+        errs() << " is NOT a numeric array literal." << '\n';
       }
     }
   }
@@ -149,13 +151,17 @@ private:
   }
 
   void replaceArrayAccesses(Module &M) {
+    std::vector<Instruction *> InsToDelete;
     for (auto &f : M.getFunctionList()) {
       for (auto &bb : f.getBasicBlockList()) {
         for (auto &ins : bb) {
-          if (ins.getOpcode() == Instruction::GetElementPtr) {
-            // TODO: Assert we only do this analysis
-            // on instructions with exactly 3 operands in GEP
+          if (ins.getOpcode() == Instruction::GetElementPtr
+              && ins.getNumOperands() == 3) {
             auto *array = dyn_cast<GlobalVariable>(ins.getOperand(0));
+            if (VarToInterpolator.find(array->getName()) == VarToInterpolator.end()) {
+              // We haven't interpolated this array. Carry on.
+              continue;
+            }
             auto *gepIndex1 = dyn_cast<ConstantInt>(ins.getOperand(1));
             auto *gepIndex2 = ins.getOperand(2);
             auto &Ctx = M.getContext();
@@ -167,6 +173,7 @@ private:
                 FT, VarToInterpolator[array->getName()], {gepIndex2}, "", &ins);
             // Replace all Load uses of this GEP with our newly created
             // function call result.
+            bool ShouldEraseGep = true;
             for (User *U : ins.users()) {
               errs() << "use ";
               if (auto *load = dyn_cast<LoadInst>(U)) {
@@ -175,6 +182,8 @@ private:
                                                 interpolatedValue);
                 }
                 load->eraseFromParent();
+              } else {
+                ShouldEraseGep = false;
               }
               errs() << '\n';
             }
@@ -186,9 +195,15 @@ private:
             errs() << '\t';
             ins.print(errs());
             errs() << '\n';
+            if (ShouldEraseGep) {
+              InsToDelete.push_back(&ins);
+            }
           }
         }
       }
+    }
+    for (auto* ins : InsToDelete) {
+      ins->eraseFromParent();
     }
   }
 
