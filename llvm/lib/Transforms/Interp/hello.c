@@ -1,15 +1,12 @@
 #include <stdio.h>
 
-const int values[6] = { 0, 1, 8, 27, 64, 125 };
-const int array2[5] = { 27, 64, 125, 216, 343 };
+const int values[6] = {0, 1, 8, 27, 64, 125};
+const int array2[5] = {27, 64, 125, 216, 343};
 float const_float = 3.14;
 
-int foo(unsigned k)
-{
-    return values[k] * values[k-1];
-}
+int foo(unsigned k) { return values[k] * values[k - 1]; }
 
-// int main(int argc, char *argv[])
-// {
-//     return 1/(1/foo(argc));
-// }
+int main(int argc, char *argv[]) {
+  int f = foo(argc);
+  return (f * argc) / f;
+}

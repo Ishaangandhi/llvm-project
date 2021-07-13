@@ -31,6 +31,7 @@ private:
       PointerType *PTy = cast<PointerType>(Global.getType());
       if (PTy->getElementType()->isArrayTy() &&
           PTy->getElementType()->getArrayElementType()->isIntegerTy() &&
+          Global.isConstant() &&
           !Global.getInitializer()->isZeroValue() && /* Not initialized */
           !Global.hasGlobalUnnamedAddr() /* Probably a string literal */) {
         errs() << " is a numeric array literal." << '\n';

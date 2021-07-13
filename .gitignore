@@ -60,3 +60,11 @@ autoconf/autom4te.cache
 /clang/utils/analyzer/projects/*/PatchedSource
 /clang/utils/analyzer/projects/*/ScanBuildResults
 /clang/utils/analyzer/projects/*/RefScanBuildResults
+llvm/.run/LLVMInterp.run.xml
+llvm/cmake/modules/LLVMProcessSources.cmake
+llvm/lib/Transforms/Interp/*.out
+llvm/lib/Transforms/Interp/*.bc
+llvm/lib/Transforms/Interp/*.ll
+llvm/lib/Transforms/Interp/*.out
+llvm/lib/Transforms/Interp/klee-out*/**
+llvm/lib/Transforms/Interp/klee-last

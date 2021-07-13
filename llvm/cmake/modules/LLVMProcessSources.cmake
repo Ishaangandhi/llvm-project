@@ -111,7 +111,7 @@ function(llvm_check_source_file_list)
           else()
               set(fn_relative "${fn}")
           endif()
-          message(SEND_ERROR "Found unknown source file ${fn_relative}
+          message(WARNING "Found unknown source file ${fn_relative}
 Please update ${CMAKE_CURRENT_LIST_FILE}\n")
         endif()
       endif()
